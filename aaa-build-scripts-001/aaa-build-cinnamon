@@ -1,33 +1,56 @@
 #!/bin/bash
 
-
 ################ common header identical except for usage, getopts etc #########################################################################################################
-shopt -s extglob
 
-cd "$HOME"
-bdate=$(date +%#Y%#m%#d-%#H%#M%#S)
-git_bdate=$(date +%#Y%#m%#d)
 
 Usage() {
   cat <<EOF
-usage: ${0##*/} [options] distro
+usage: ${0##*/} [options] -d <distro>
 
- 
   -d < distro >
   -d <kali|stable|unstable|testing|ubuntu>
   
-  -g
-  -g <build from git sources as opposed to
-     release sources as default
+  [options]
   
+  -p < purge ie delete work repo before build starts>
+  
+  -c <remove all aaa tag versions from
+  repo dirs before adding, used on first
+  build of package>
+  
+  -t < build everything from git >
+  
+  -i < install to local machine after build>
+  
+  -x < only install to local machine, no
+	building or anything else, oviously this
+	superseeds all other options>
+  
+  ****repo flags*****
+  -l < include built .changes to home repo,
+	basedir=aaa_home_repo_dir
+	distro=aaa_debian_distro
+	
+  -g <also include packages into git repo>
+	basedir=aaa_git_repo_dir
+	distro=aaa_debian_distro
+  
+  aaa_debian_distro
+	sourced from /etc/aaa-master-config
+	<aaa_debian_distro> overwrtten by -d
+	< distro > >
+   
   This script uses pbuilder and reprepro
-  to build cinnamon git or releases
-   for the desired distro
-  (including kali)
-  all packaging follows debian guidelines
+  to build the package in the current dir
+  result is found at the location
+  specified in aaa-master-configure
+  as aaa_build_result
+  
 
 EOF
 }
+
+
 
 if [[ $1 = @(-h|--help) ]]; then
   Usage
@@ -48,13 +71,6 @@ else
 	exit 1
 fi
 
-#source settings
-if [ -r $HOME/.aaa_settings ]; then
-  Info "found a settings file.. reading it"
-  . $HOME/.aaa_settings
-fi
-
-
 #source config
 if [ -r /etc/aaa-master-config ]; then
   Info "found my master config file.. reading it"
@@ -64,33 +80,49 @@ if [ -r /etc/aaa-master-config ]; then
 		. $HOME/.aaa-local-config
 	fi
 else
-	Fuck "Failed to find master settings file quitting"
+	Fuck "Failed to find master config file quitting"
+	exit 1
 fi
 
+#source settings
+if [ -r $HOME/.aaa_settings ]; then
+  Info "found a settings file.. reading it"
+  . $HOME/.aaa_settings
+fi
 
-#remove previous run config if any, will be rewritten when aaa-master-config is sourced
-#if no command arguments /etc/pbuilderrc is used instead which is testing fallback
-rm -rf $HOME/.pbuilderrc
+# get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
 
-while getopts ":d:g" opt; do
+while getopts ":d:pclgt" opt; do
   case $opt in
-    d) Info "-d $OPTARG" 
+	x) Warn "about to install cinnamon and stuf, MAKE SURE YOUR NOT IN A CINNAMON SESSEION"
+		AnyKey
+		cd $HOME
+		aptitude purge ~ncinnamon ~nmuffin ~ncjs ~nnemo
+		apt-get --no-upgrade --no-install-recommends install "cinnamon*" "muffin*" "cjs*" "nemo*" ;;
+    d) Info "< -d $OPTARG > passed" 
 		case $OPTARG in
 	kali|testing|unstable|stable|ubuntu) Info "-d $OPTARG is valid, building for $OPTARG"
 										SwitchDistro "$OPTARG" ;;
-									  *) Fuck "<-d $OPTARG> is not valid, needs to be <-d kali,stable,unstable,testing or ubuntu>"  ;;
- 
+									  *) Fuck "<-d $OPTARG> is not valid, needs to be <-d kali,stable,unstable,testing or ubuntu>" ;;
 		esac ;;
-	g) Info "-g recieved all builds will be from git, that ok with you ?"
-		AnyKey
-		aaa_cinnamon_git_list="$aaa_cinnamon_release_list $aaa_cinnamon_git_list"
-		aaa_cinnamon_release_list="" ;;
+	i) install=1 ;;
+	p) WriteRepo "$aaa_work_repo_dir" "$aaa_work_codenames" "i386 amd64 armel armhf" -r
+		ActivateRepo "$aaa_work_repo_dir" "$aaa_work_codenames" "http://dk.archive.ubuntu.com/ubuntu/pool/main/u/ubuntu-keyring/ubuntu-keyring_2012.05.19_all.deb" ;;
+	c) clean="-c" ;;
+	l) add_to_home_repo=1 ;;
+	g) add_to_git_repo=1 ;;
+	t) aaa_cinnamon_git_list="$aaa_cinnamon_release_list $aaa_cinnamon_git_list"
+	aaa_cinnamon_release_list="" ;;
    \?) Fuck "Invalid option: -$OPTARG" ;;
     :) Fuck "Option -$OPTARG requires a distro name, kali,stable,unstable,testing or ubuntu" ;;
   esac
 done
+#shift the options and args out the way http://wiki.bash-hackers.org/howto/getopts_tutorial
+shift $((OPTIND-1))
 
-
+#remove previous run config if any, will be rewritten when aaa-master-config is sourced
+#if no command arguments /etc/pbuilderrc is used instead which is  fallback
+rm -rf $HOME/.pbuilderrc
 
 
 ########## end of common header #############################################################################################################################################
@@ -100,7 +132,7 @@ done
 
 CheckMyDeps "reprepro pbuilder sed cat find grep dpkg-source lynx"
 [[ $aaa_setup_build_base_complete == yes ]] || Fuck "this script needs the base build environment setup, run aaa_setup-build-base"
-[[ $aaa_setup_build_env_complete == "yes" ]] || Fuck "this script needs the build environment setup, run aaa-setup-build-env"
+[[ $aaa_setup_build_env_complete == yes ]] || Fuck "this script needs the build environment setup, run aaa-setup-build-env"
 
 
 function FailOkFilter()
@@ -141,8 +173,8 @@ again, i would advise you try again a few times"
 	
 		esac
 	else
-		tar -xzf *.tar.gz
-		rm -f *.tar.gz
+		Test tar -xzf *.tar.gz
+		Test rm -f *.tar.gz
 		aaa_escape=1
 	fi
 done
@@ -178,12 +210,9 @@ to remove annoying red banner when running under root" ;;
 	if [[ $? -eq 0 ]]; then
 		#add package to result repo and working repo
 		cd "$aaa_build_result"
-		CleanMyRepo  "$aaa_localrepo_dir" "$aaa_work_repo"
-		CleanMyRepo  "$aaa_localrepo_dir" "$aaa_debian_distro"
-		Test reprepro -b "$aaa_localrepo_dir" includedeb $aaa_work_repo *.deb
-		Test reprepro -b "$aaa_localrepo_dir" include $aaa_debian_distro *.changes
-		[[ $aaa_git_repo_dir ]] && reprepro -b "$aaa_git_repo_dir" include $aaa_debian_distro *.changes
-	
+		[[ $add_to_home_repo -eq 1 && "$aaa_home_repo_dir" ]] && IncludeToRepo "$aaa_home_repo_dir" "$aaa_debian_distro" $clean
+		IncludeToRepo "$aaa_work_repo_dir" work $clean
+		[[ $add_to_git_repo -eq 1 && "$aaa_git_repo_dir" ]] && IncludeToRepo "$aaa_git_repo_dir" "$aaa_debian_distro" $clean
 	else
 		FailOkFilter "$pkg_name"
 	fi
@@ -230,12 +259,7 @@ CleanMyBuildArea
 
 #update / create base immage
 UpdateBase
-
-
-# clean out old repo of cinnamon packages if update
-
-#PurgeMyRepo $aaa_debian_distro "cinnamon muffin nemo cjs"
-#PurgeMyRepo  $aaa_work_repo "cinnamon muffin nemo cjs"
+	
 
 
 #check for previous working copy
@@ -323,24 +347,27 @@ for _package in $aaa_cinnamon_git_list; do
 					case $aaa_tmpchr in
 						k) Info "keeping source $aaa_cinnamon_sources_git/$_package and building from it"
 							cd "$aaa_cinnamon_sources_git"
-							BuildIt "$_package" g ;;
+							BuildIt "$_package" ;;
 						d) rm -fr "$aaa_cinnamon_sources_git/$_package"
 							cd "$aaa_cinnamon_sources_git"
-							CloneIt "$_package" "$aaa_mint_git_url" && BuildIt "$_package" g ;;
+							CloneIt "$_package" "$aaa_mint_git_url" && BuildIt "$_package" ;;
 						*) Info "skipping building $aaa_cinnamon_sources_git/$_package" ;;
 					esac ;;
 			  *) Fuck "Internal error" ;;
 		esac
 	else
 		cd "$aaa_cinnamon_sources_git"
-		CloneIt "$_package" "$aaa_mint_git_url" && BuildIt "$_package" g
+		CloneIt "$_package" "$aaa_mint_git_url" && BuildIt "$_package"
 	fi
 done
 
 
-
-#cd $HOME
-#apt-get update
-#apt-get --no-upgrade --no-install-recommends install --reinstall "cinnamon*" "muffin*" "cjs*" "nemo*"
+if [[ $install -eq 1 ]]; then
+Warn "about to install cinnamon and stuf, MAKE SURE YOUR NOT IN A CINNAMON SESSEION"
+AnyKey
+cd $HOME
+aptitude purge ~ncinnamon ~nmuffin ~ncjs ~nnemo
+apt-get --no-upgrade --no-install-recommends install "cinnamon*" "muffin*" "cjs*" "nemo*"
+fi
 
 

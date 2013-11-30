@@ -10,25 +10,34 @@ usage: ${0##*/} [options] </path/to/pkg/dir>
   -d < distro >
   -d <kali|stable|unstable|testing|ubuntu>
   
-  -i < include built .changes to local repo,
-	basedir=aaa_localrepo_dir
-	distro=aaa_debian_distro
-	sourced from /etc/aaa-master-config
-	<aaa_debian_distro> overwrtten by -d
-	< distro > >
-	
-  -g <also include packages into git repo>
-  
-  -w <also include packages into work repo>
-  
   -q <supress normal output, just print
-  reqired fields>
+  names of files sucsessfully built and 
+  processed>
   
-  -p <remove all aaa tag versions from
-  repo dirs ( -i -g -w if passed)
+  -c <remove all aaa tag versions from
+  repo dirs before adding, used on first
+  build of package>
   
   -u <update/create pbuilder immage before
    build>
+  
+  ****repo flags*****
+  -l < include built .changes to home repo,
+	basedir=aaa_home_repo_dir
+	distro=aaa_debian_distro
+	
+  -g <also include packages into git repo>
+	basedir=aaa_git_repo_dir
+	distro=aaa_debian_distro
+  
+  -w <also include packages into work repo>
+	basedir=aaa_work_repo_dir
+	distro=work
+  
+  aaa_debian_distro
+	sourced from /etc/aaa-master-config
+	<aaa_debian_distro> overwrtten by -d
+	< distro > >
    
   This script uses pbuilder and reprepro
   to build the package in the current dir
@@ -82,11 +91,7 @@ fi
 
 # get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
 
-#remove previous run config if any, will be rewritten when aaa-master-config is sourced
-#if no command arguments /etc/pbuilderrc is used instead which is  fallback
-rm -rf $HOME/.pbuilderrc
-
-while getopts ":upgwid:" opt; do
+while getopts ":d:cuqlgw" opt; do
   case $opt in
     d) Info "< -d $OPTARG > passed" 
 		case $OPTARG in
@@ -94,10 +99,10 @@ while getopts ":upgwid:" opt; do
 										SwitchDistro "$OPTARG" ;;
 									  *) Fuck "<-d $OPTARG> is not valid, needs to be <-d kali,stable,unstable,testing or ubuntu>" ;;
 		esac ;;
-	p) purge="-p" ;;
+	c) clean="-c" ;;
 	u) update=1 ;;
 	q) quiet=1 ;;
-	i) add_to_repo=1 ;;
+	l) add_to_home_repo=1 ;;
 	g) add_to_git_repo=1 ;;
 	w) add_to_work_repo=1 ;;
    \?) Fuck "Invalid option: -$OPTARG" ;;
@@ -111,7 +116,9 @@ shift $((OPTIND-1))
 [[ -z $1 ]] && Fuck "need directory target"
 [[ -d $1/debian ]] || Fuck "target dir does not contain a debian subdir"
 
-
+#remove previous run config if any, will be rewritten when aaa-master-config is sourced
+#if no command arguments /etc/pbuilderrc is used instead which is  fallback
+rm -rf $HOME/.pbuilderrc
 
 
 ########## end of common header #############################################################################################################################################
@@ -133,44 +140,36 @@ if [[ $quiet -eq 1 ]]; then
 	rm -rf "$aaa_build_result" > /dev/null 2>&1
 	
 	mkdir -p "$aaa_build_location" > /dev/null 2>&1 || exit 1
-	mkdir -p "$aaa_work_dir" > /dev/null 2>&1 || exit 1
+	mkdir -p "$aaa_work_dir" > /dev/null 2>&1 || exit 2
 	
 	#update / create base immage
 	if [[ -e "$aaa_base_gz_dir/$aaa_base_gz" ]]; then
 		if [[ $update -eq 1 ]]; then
-			pbuilder --update > /dev/null 2>&1 || exit 1
+			pbuilder --update > /dev/null 2>&1 || exit 3
 		fi
 	else
 		if [[ $update -eq 1 ]]; then
-			pbuilder --create > /dev/null 2>&1 || exit 1
+			pbuilder --create > /dev/null 2>&1 || exit 4
 		fi
 	fi
 
 	
 	# build  source package
-	cp -R -p "$1" "$aaa_work_dir/$1" 2>&1 || exit 1
-	cp -R -p *.orig.tar.gz "$aaa_work_dir" 2>&1 || exit 1
+	cp -R -p "$1" "$aaa_work_dir/$1" 2>&1 || exit 5
+	cp -R -p *.orig.tar.gz "$aaa_work_dir" 2>&1 || exit 6
 	cd "$aaa_work_dir/$1"
 	Stamp 2>&1 || exit 1
 	cd ..
 	
-	dpkg-source -b "$1" 2>&1 || exit 1
+	dpkg-source -b "$1" 2>&1 || exit 7
 	
-	pbuilder --build *.dsc 2>&1 || exit 1
+	pbuilder --build *.dsc 2>&1 || exit 8
 	
-	cd "$aaa_build_result" 2>&1 || exit 1
+	cd "$aaa_build_result" 2>&1 || exit 9
 	
-	if [[ $add_to_repo -eq 1 ||  $add_to_work_repo -eq 1 ]]; then
-		CleanMyRepo "$aaa_localrepo_dir" $purge > /dev/null 2>&1
-	fi
-	
-	[[ $add_to_repo -eq 1 ]] && reprepro -b "$aaa_localrepo_dir" include "$aaa_debian_distro" *.changes > /dev/null 2>&1 
-	[[ $add_to_work_repo -eq 1 ]] && reprepro -b "$aaa_localrepo_dir" includedeb "$aaa_work_repo" *.deb > /dev/null 2>&1 
-
-	if [[ $add_to_git_repo -eq 1 ]]; then
-		CleanMyRepo "$aaa_git_repo_dir" $purge > /dev/null 2>&1 
-		reprepro -Vb "$aaa_git_repo_dir" include "$aaa_debian_distro" *.changes > /dev/null 2>&1 
-	fi
+	[[ $add_to_home_repo -eq 1 && "$aaa_home_repo_dir" ]] && IncludeToRepo "$aaa_home_repo_dir" "$aaa_debian_distro" $clean 2>&1 || exit 10
+	[[ $add_to_work_repo -eq 1 && "$aaa_work_repo_dir" ]] && IncludeToRepo "$aaa_work_repo_dir" work $clean 2>&1 || exit 11
+	[[ $add_to_git_repo -eq 1 && "$aaa_git_repo_dir" ]] && IncludeToRepo "$aaa_git_repo_dir" "$aaa_debian_distro" $clean 2>&1 || exit 12
 	
 	list=$(ls *.deb)
 	for output in $list; do
@@ -199,16 +198,11 @@ else
 	
 	cd "$aaa_build_result"
 	
-	if [[ $add_to_repo -eq 1 ||  $add_to_work_repo -eq 1 ]]; then
-		CleanMyRepo "$aaa_localrepo_dir" $purge
-	fi
-	
-	[[ $add_to_repo -eq 1 ]] && reprepro -Vb "$aaa_localrepo_dir" include "$aaa_debian_distro" *.changes
-	[[ $add_to_work_repo -eq 1 ]] && reprepro -Vb "$aaa_localrepo_dir" includedeb "$aaa_work_repo" *.deb
+	[[ $add_to_home_repo -eq 1 && "$aaa_home_repo_dir" ]] && IncludeToRepo "$aaa_home_repo_dir" "$aaa_debian_distro" $clean
+	[[ $add_to_work_repo -eq 1 && "$aaa_work_repo_dir" ]] && IncludeToRepo "$aaa_work_repo_dir" work $clean
+	[[ $add_to_git_repo -eq 1 && "$aaa_git_repo_dir" ]] && IncludeToRepo "$aaa_git_repo_dir" "$aaa_debian_distro" $clean
 
-	if [[ $add_to_git_repo -eq 1 ]]; then
-		CleanMyRepo "$aaa_git_repo_dir" $purge
-		reprepro -Vb "$aaa_git_repo_dir" include "$aaa_debian_distro" *.changes
-	fi
+
+	
 fi
 

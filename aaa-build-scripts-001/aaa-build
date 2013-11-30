@@ -89,6 +89,9 @@ if [ -r $HOME/.aaa_settings ]; then
   . $HOME/.aaa_settings
 fi
 
+#MUST BE BEFORE SWITCH DISTRO IS CALLED
+rm -rf $HOME/.pbuilderrc
+
 # get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
 
 while getopts ":d:cuqlgw" opt; do
@@ -116,9 +119,7 @@ shift $((OPTIND-1))
 [[ -z $1 ]] && Fuck "need directory target"
 [[ -d $1/debian ]] || Fuck "target dir does not contain a debian subdir"
 
-#remove previous run config if any, will be rewritten when aaa-master-config is sourced
-#if no command arguments /etc/pbuilderrc is used instead which is  fallback
-rm -rf $HOME/.pbuilderrc
+
 
 
 ########## end of common header #############################################################################################################################################

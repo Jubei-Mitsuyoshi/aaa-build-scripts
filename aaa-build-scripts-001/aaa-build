@@ -25,14 +25,20 @@ usage: ${0##*/} [options] </path/to/pkg/dir>
   -l < include built .changes to home repo,
 	basedir=aaa_home_repo_dir
 	distro=aaa_debian_distro
+	only effective if repo dir set in
+	aaa-master-config
 	
   -g <also include packages into git repo>
 	basedir=aaa_git_repo_dir
 	distro=aaa_debian_distro
+	only effective if repo dir set in
+	aaa-master-config
   
   -w <also include packages into work repo>
 	basedir=aaa_work_repo_dir
 	distro=work
+	only effective if repo dir set in
+	aaa-master-config
   
   aaa_debian_distro
 	sourced from /etc/aaa-master-config
@@ -168,9 +174,21 @@ if [[ $quiet -eq 1 ]]; then
 	
 	cd "$aaa_build_result" 2>&1 || exit 9
 	
-	[[ $add_to_home_repo -eq 1 && "$aaa_home_repo_dir" ]] && IncludeToRepo "$aaa_home_repo_dir" "$aaa_debian_distro" $clean 2>&1 || exit 10
-	[[ $add_to_work_repo -eq 1 && "$aaa_work_repo_dir" ]] && IncludeToRepo "$aaa_work_repo_dir" work $clean 2>&1 || exit 11
-	[[ $add_to_git_repo -eq 1 && "$aaa_git_repo_dir" ]] && IncludeToRepo "$aaa_git_repo_dir" "$aaa_debian_distro" $clean 2>&1 || exit 12
+	if [[ $add_to_home_repo -eq 1 && ! -z "${aaa_home_repo_dir}" ]]; then
+		RemovePackage "$aaa_home_repo_dir" "$aaa_debian_distro" $clean 2>&1 || exit 10
+		Test reprepro -Vb "$aaa_home_repo_dir" includedeb "$aaa_debian_distro" *.deb 2>&1 || exit 11
+	fi
+	
+	if [[ $add_to_git_repo -eq 1 && ! -z "${aaa_git_repo_dir}" ]]; then
+		RemovePackage "$aaa_git_repo_dir" "$aaa_debian_distro" $clean 2>&1 || exit 12
+		Test reprepro -Vb "$aaa_git_repo_dir" include "$aaa_debian_distro" *.changes 2>&1 || exit 13
+	fi
+	
+	if [[ $add_to_work_repo -eq 1 && ! -z  "$aaa_work_repo_dir" ]]; then
+		RemovePackage "$aaa_work_repo_dir" work -c 2>&1 || exit 14
+		Test reprepro -Vb "$aaa_work_repo_dir" includedeb work *.deb 2>&1 || exit 15
+	fi
+
 	
 	list=$(ls *.deb)
 	for output in $list; do
@@ -199,10 +217,21 @@ else
 	
 	cd "$aaa_build_result"
 	
-	[[ $add_to_home_repo -eq 1 && "$aaa_home_repo_dir" ]] && IncludeToRepo "$aaa_home_repo_dir" "$aaa_debian_distro" $clean
-	[[ $add_to_work_repo -eq 1 && "$aaa_work_repo_dir" ]] && IncludeToRepo "$aaa_work_repo_dir" work $clean
-	[[ $add_to_git_repo -eq 1 && "$aaa_git_repo_dir" ]] && IncludeToRepo "$aaa_git_repo_dir" "$aaa_debian_distro" $clean
-
+	
+	if [[ $add_to_home_repo -eq 1 && ! -z "${aaa_home_repo_dir}" ]]; then
+		RemovePackage "$aaa_home_repo_dir" "$aaa_debian_distro" $clean
+		Test reprepro -Vb "$aaa_home_repo_dir" includedeb "$aaa_debian_distro" *.deb
+	fi
+	
+	if [[ $add_to_git_repo -eq 1 && ! -z "${aaa_git_repo_dir}" ]]; then
+		RemovePackage "$aaa_git_repo_dir" "$aaa_debian_distro" $clean
+		Test reprepro -Vb "$aaa_git_repo_dir" include "$aaa_debian_distro" *.changes
+	fi
+	
+	if [[ $add_to_work_repo -eq 1 && ! -z  "$aaa_work_repo_dir" ]]; then
+		RemovePackage "$aaa_work_repo_dir" work -c
+		Test reprepro -Vb "$aaa_work_repo_dir" includedeb work *.deb
+	fi
 
 	
 fi

@@ -126,7 +126,8 @@ done
 shift $((OPTIND-1))
 
 
-
+#we are always adding to work repo, its more convenient
+add_to_work_repo=1
 
 ########## end of common header #############################################################################################################################################
 #check script dependencies

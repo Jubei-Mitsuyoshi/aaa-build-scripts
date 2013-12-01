@@ -7,16 +7,14 @@ cd "$HOME"
 Usage() {
   cat <<EOF
 usage: ${0##*/} [options] </path/to/pkg/dir>
-
-   -n < list of blacklisted repo names >
-   -n < will not download or build these repo
-   names >
    
+   -l < list all gits from selected github page
+    to the current dir >
+    
    -c < clone all gits from selected github page
     to the current dir >
     
-    -c < clone all gits from selected github page
-    to the current dir >
+    -b < build all git -- INTERNAL SEE MY CODE __>
    
    
   This script performs various git admin actions
@@ -32,50 +30,13 @@ if [[ $1 = @(-h|--help) ]]; then
   exit 1
 fi
 
-#source common functions
-if [[ -r /usr/bin/aaa-common-functions ]]; then
-	. /usr/bin/aaa-common-functions
-	if [[ ! $? -eq 0 ]]; then
-		echo " failed to source common functions at /usr/bin/aaa-common-functions"
-		echo "quitting !! "
-		exit 1
-	fi
-else
-	echo " failed to find common functions at /usr/bin/aaa-common-functions"
-	echo "quitting !! "
-	exit 1
-fi
-
-#source config
-if [ -r /etc/aaa-master-config ]; then
-  Info "found my master config file.. reading it"
-  . /etc/aaa-master-config
-	if [ -r $HOME/.aaa-local-config ]; then
-		Info "found a local settings file.. reading it"
-		. $HOME/.aaa-local-config
-	fi
-else
-	Fuck "Failed to find master config file quitting"
-	exit 1
-fi
-
-#source settings
-if [ -r $HOME/.aaa_settings ]; then
-  Info "found a settings file.. reading it"
-  . $HOME/.aaa_settings
-fi
-
 # get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
 
-while getopts ":lc" opt; do
+while getopts ":lcb" opt; do
   case $opt in
-    n) Info "< -d $OPTARG > passed" 
-		blacklist="$OPTARG" ;;
 	l) list=1 ;;
 	c) clone=1 ;;
-	b) add_to_home_repo=1 ;;
-	g) add_to_git_repo=1 ;;
-	w) add_to_work_repo=1 ;;
+	b) build=1 ;;
    \?) Fuck "Invalid option: -$OPTARG" ;;
     :) Fuck "Option -$OPTARG requires a distro name, kali,stable,unstable,testing or ubuntu" ;;
   esac
@@ -83,19 +44,127 @@ done
 #shift the options and args out the way http://wiki.bash-hackers.org/howto/getopts_tutorial
 shift $((OPTIND-1))
 #and lets parse it
-owner_name="$1"
-shift
+
+
+
+current_donot_build_list="aaa-admin-scripts \
+aaa-arch-devtools \
+aaa-arch-install-scripts \
+aaa-archlinux-pacman \
+aaa-build-scripts \
+aaa-debian-repo \
+aaa-env aaa-eudev \
+aaa-namcap \
+aaa-nemo-actions \
+aaa-network-manager-applet"
+
+
 
 
 if [[ $list -eq 1 ]]; then
-	lynx -dump -listonly https://github.com/$1?tab=repositories | grep 'stargazers' | sed -r 's/^.{6}//' | sed 's/\/stargazers//' || Fuck "lynx failed to get list, either internet glitch or nonexistant gihub account name passed "
+	[[ -z $1 ]] && echo "need github owner name"
+	[[ -z $1 ]] && exit 1
+	lynx -dump -listonly https://github.com/$1?tab=repositories | grep 'stargazers' | sed -r 's/^.{6}//' | sed 's/\/stargazers//' || echo "lynx failed to get list, either internet glitch or nonexistant gihub account name passed "
 	exit 0
 fi
 
 if [[ $clone -eq 1 ]]; then
+	[[ -z $1 ]] && echo "need github owner name"
+	[[ -z $1 ]] && exit 1
 	for repo_url in `lynx -dump -listonly https://github.com/$1?tab=repositories | grep 'stargazers' | sed -r 's/^.{6}//' | sed 's/\/stargazers//'`; do
-		repo_name=$(sed "s/https:\/\/github.com\/$owner_name\///" $repo_url)
-		InList $repo_name $1 && Test git clone "$repo_url".git
+		repo_name=$(sed "s/https:\/\/github.com\/$1\///" $repo_url)
+		Test git clone "$repo_url".git
 	done
 	exit 0
+fi
+
+# ls -d aaa* >> /root/git/github/aaa-build-scripts/aaa-build-scripts-001/aaa-build-all-gits
+#InList $repo_name $1 && 
+
+if [[ $build -eq 1 ]]; then
+
+cd /root/git/github/aaa-archlinux-pacman
+(aaa-build -culg archlinux-pacman-4.1.2)
+wait
+(aaa-build -lg -d kali archlinux-pacman-4.1.2)
+wait
+
+cd /root/git/github/aaa-compiz
+(aaa-build -clgw compiz-0.9.10+13.10.20131011)
+wait
+(aaa-build -lg -d kali compiz-0.9.10+13.10.20131011)
+wait
+
+cd /root/git/github/aaa-cpyrit-cuda
+(aaa-build -clg cpyrit-cuda-0.4.0-git20131223)
+wait
+(aaa-build -lg -d kali cpyrit-cuda-0.4.0-git20131223)
+wait
+
+cd /root/git/github/aaa-emerald
+(aaa-build -clg emerald-0.9.5-0)
+wait
+(aaa-build -lg -d kali emerald-0.9.5-0)
+wait
+
+cd /root/git/github/aaa-fontconfig-infinality
+(aaa-build -clg fontconfig-infinality-1-2)
+wait
+(aaa-build -lg -d fontconfig-infinality-1-2)
+wait
+
+cd /root/git/github/aaa-freetype-infinality
+(aaa-build -clg freetype-infinality_2.4.9-3)
+wait
+(aaa-build -lg -d kali freetype-infinality_2.4.9-3)
+wait
+
+cd /root/git/github/aaa-galternatives
+(aaa-build -clg galternatives-0.13.5)
+wait
+(aaa-build -lg -d kali galternatives-0.13.5)
+wait
+
+cd /root/git/github/aaa-gdebi
+(aaa-build -clg gdebi-0.9.1)
+wait
+(aaa-build -lg -d kali gdebi-0.9.1)
+wait
+
+
+cd /root/git/github/aaa-pup-volume-monitor
+(aaa-build -clg gdebi-0.9.1)
+wait
+(aaa-build -lg -d kali gdebi-0.9.1)
+wait
+
+
+cd /root/git/github/aaa-pyrit
+(aaa-build -clg pyrit-0.4.0-git20131223)
+wait
+(aaa-build -lg -d kali pyrit-0.4.0-git20131223)
+wait
+
+
+
+cd /root/git/github/aaa-timeshift
+(aaa-build -clg timeshift-1.2.7)
+wait
+(aaa-build -lg -d kali timeshift-1.2.7)
+wait
+
+
+cd /root/git/github/aaa-winexe
+(aaa-build -clg winexe-1.1~20130620kali4)
+wait
+(aaa-build -lg -d kali winexe-1.1~20130620kali4)
+wait
+
+
+cd /root/git/github/aaa-xarchiver
+(aaa-build -clg xarchiver-0.5.2+20130119+dfsg-3)
+wait
+(aaa-build -lg -d kali xarchiver-0.5.2+20130119+dfsg-3)
+wait
+
 fi

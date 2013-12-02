@@ -111,9 +111,27 @@ while getopts ":d:cuqlgw" opt; do
 	c) clean="-c" ;;
 	u) update=1 ;;
 	q) quiet=1 ;;
-	l) add_to_home_repo=1 ;;
-	g) add_to_git_repo=1 ;;
-	w) add_to_work_repo=1 ;;
+	l) if [[ -z  "$aaa_home_repo_dir" ]]; then
+			Warn "/etc/aaa-master-config has no reference for aaa_home_repo_dir"
+			Warn "if you continue your home repo will not be used "
+			AnyKey
+		else
+			add_to_home_repo=1
+		fi ;;
+	g) if [[ -z  "$aaa_git_repo_dir" ]]; then
+			Warn "/etc/aaa-master-config has no reference for aaa_git_repo_dir"
+			Warn "if you continue your home repo will not be used "
+			AnyKey
+		else
+			add_to_git_repo=1
+		fi ;;
+	w) if [[ -z  "$aaa_work_repo_dir" ]]; then
+			Warn "/etc/aaa-master-config has no reference for aaa_work_repo_dir"
+			Warn "if you continue your work repo will not be used "
+			AnyKey
+		else
+			add_to_work_repo=1
+		fi ;;
    \?) Fuck "Invalid option: -$OPTARG" ;;
     :) Fuck "Option -$OPTARG requires a distro name, kali,stable,unstable,testing or ubuntu" ;;
   esac
@@ -142,12 +160,7 @@ shift $((OPTIND-1))
 if [[ $quiet -eq 1 ]]; then
 
 	#setup working dirs
-	rm -rf "$aaa_work_dir" > /dev/null 2>&1
-	rm -rf "$aaa_build_location" > /dev/null 2>&1
-	rm -rf "$aaa_build_result" > /dev/null 2>&1
-	
-	mkdir -p "$aaa_build_location" > /dev/null 2>&1 || exit 1
-	mkdir -p "$aaa_work_dir" > /dev/null 2>&1 || exit 2
+	CleanMyBuildArea > /dev/null 2>&1 || exit 3
 	
 	#update / create base immage
 	if [[ -e "$aaa_base_gz_dir/$aaa_base_gz" ]]; then
@@ -202,6 +215,7 @@ else
 	
 	Test pbuilder --build *.dsc
 	
+	cd "$aaa_build_result"
 	AutoInclude $clean
 
 	

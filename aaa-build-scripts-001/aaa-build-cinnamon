@@ -114,8 +114,20 @@ while getopts ":d:pclgt" opt; do
 	p) WriteRepo "$aaa_work_repo_dir" "$aaa_work_codenames" "i386 amd64 armel armhf" -r
 		ActivateRepo "$aaa_work_repo_dir" "$aaa_work_codenames" "http://dk.archive.ubuntu.com/ubuntu/pool/main/u/ubuntu-keyring/ubuntu-keyring_2012.05.19_all.deb" ;;
 	c) clean="-c" ;;
-	l) add_to_home_repo=1 ;;
-	g) add_to_git_repo=1 ;;
+		l) if [[ -z  "$aaa_home_repo_dir" ]]; then
+			Warn "/etc/aaa-master-config has no reference for aaa_home_repo_dir"
+			Warn "if you continue your home repo will not be used "
+			AnyKey
+		else
+			add_to_home_repo=1
+		fi ;;
+	g) if [[ -z  "$aaa_git_repo_dir" ]]; then
+			Warn "/etc/aaa-master-config has no reference for aaa_git_repo_dir"
+			Warn "if you continue your home repo will not be used "
+			AnyKey
+		else
+			add_to_git_repo=1
+		fi ;;
 	t) aaa_cinnamon_git_list="$aaa_cinnamon_release_list $aaa_cinnamon_git_list"
 	aaa_cinnamon_release_list="" ;;
    \?) Fuck "Invalid option: -$OPTARG" ;;
@@ -213,6 +225,7 @@ to remove annoying red banner when running under root" ;;
 	pbuilder --build *.dsc
 	if [[ $? -eq 0 ]]; then
 		#add package to result repo and working repo
+		cd "$aaa_build_result"
 		AutoInclude $clean
 	else
 		FailOkFilter "$pkg_name"
@@ -257,6 +270,8 @@ fi
 #setup working dir
 
 CleanMyBuildArea
+#check for work repo
+[[ -z  "$aaa_work_repo_dir" ]] && Fuck "/etc/aaa-master-config has no reference for aaa_work_repo_dir"
 
 #update / create base immage
 UpdateBase

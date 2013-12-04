@@ -1,0 +1,250 @@
+#!/bin/bash
+
+################ common header identical except for usage, getopts etc #########################################################################################################
+
+cd "$HOME"
+
+Usage() {
+  cat <<EOF
+usage: ${0##*/} [options] </path/to/pkg/dir>
+   
+   -l < list all gits from selected github page
+    to the current dir >
+    
+   -c < clone all gits from selected github page
+    to the current dir >
+    
+   -s < read the status of all gits in the current dir >
+    
+   -t < test the build function >
+   
+   -a < auto build do not stop for errors >
+    
+   -b < build all git do checks along thre way>
+   
+   
+  This script performs various git admin actions
+  
+
+EOF
+}
+
+
+
+if [[ $1 = @(-h|--help) ]]; then
+  Usage
+  exit 1
+fi
+
+# get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
+
+while getopts ":lcbsta" opt; do
+  case $opt in
+	a) auto=1 ;;
+	t) test=1 ;;
+	s) status=1 ;;
+	l) list=1 ;;
+	c) clone=1 ;;
+	b) build=1 ;;
+   \?) echo -e "Invalid option: -$OPTARG" ;;
+    :) echo -e "Option -$OPTARG requires a github account name" ;;
+  esac
+done
+#shift the options and args out the way http://wiki.bash-hackers.org/howto/getopts_tutorial
+shift $((OPTIND-1))
+#and lets parse it
+
+
+####################################################################################
+#vars
+
+repo_dir="$HOME/git/github"
+repo_dir_list="$HOME/git/github/aaa-debian-repo $HOME/aaa-home-repo"
+distro_list="kali unstable testing"
+
+####################################################################################
+
+
+if [[ $list -eq 1 ]]; then
+	[[ -z $1 ]] && echo "need github owner name"
+	[[ -z $1 ]] && exit 1
+	lynx -dump -listonly https://github.com/$1?tab=repositories | grep 'stargazers' | sed -r 's/^.{6}//' | sed 's/\/stargazers//' || echo "lynx failed to get list, either internet glitch or nonexistant gihub account name passed "
+	exit 0
+fi
+
+if [[ $clone -eq 1 ]]; then
+	[[ -z $1 ]] && echo "need github owner name"
+	[[ -z $1 ]] && exit 1
+	for repo_url in `lynx -dump -listonly https://github.com/$1?tab=repositories | grep 'stargazers' | sed -r 's/^.{6}//' | sed 's/\/stargazers//'`; do
+		repo_name=$(sed "s/https:\/\/github.com\/$1\///" $repo_url)
+		Test git clone "$repo_url".git
+	done
+	exit 0
+fi
+
+
+if [[ $status -eq 1 ]]; then
+	cd "$repo_dir"
+	git_list=$(ls -d aaa*)
+	for aaa_dir in $git_list; do
+		cd "$repo_dir/$aaa_dir"
+		if [[ ! -r "$repo_dir/$aaa_dir/README.md" ]]; then
+			echo -e "$repo_dir/$aaa_dir ------------->  no README.md"
+			echo -e "any key to continue"
+			continue
+		fi
+		status=$(grep 'STATUS:' "$repo_dir/$aaa_dir/README.md")
+		#echo "$status"
+		if [[ $status == "" ]]; then
+			echo -e "$repo_dir/$aaa_dir ------------->  status info missing"
+			echo -e "any key to continue"
+			continue
+		fi
+		# grep sed to check can be built from readme
+		status=$(grep 'STATUS:' "$repo_dir/$aaa_dir/README.md")
+		[[ $aaa_dir != aaa-debian-repo ]] && echo "$aaa_dir $status"
+	done
+fi
+
+
+
+if [[ $build -eq 1 || $test -eq 1 || $auto -eq 1 ]]; then
+	cd "$repo_dir"
+	git_list=$(ls -d aaa*)
+	for aaa_dir in $git_list; do
+		cd "$repo_dir/$aaa_dir"
+		[[ "$aaa_dir" == aaa-debian-repo ]] && continue
+		if [[ ! -r "$repo_dir/$aaa_dir/README.md" ]]; then
+			echo -e "$repo_dir/$aaa_dir ------------->  no README.md"
+			echo -e "any key to continue"
+			[[ $auto -ne 1 ]] && read -n1 -s
+			continue
+		fi
+		status=$(grep 'STATUS:' "$repo_dir/$aaa_dir/README.md")
+		#echo "$status"
+		if [[ $status == "" ]]; then
+			echo -e "$repo_dir/$aaa_dir ------------->  status info missing skipping"
+			echo -e "any key to continue"
+			[[ $auto -ne 1 ]] && read -n1 -s
+			continue
+		fi
+		
+		# grep sed to check can be built from readme
+		if [[ $(grep 'STATUS:' "$repo_dir/$aaa_dir/README.md" | grep 'packaged') != "" ]]; then
+			result=""
+			total=""
+			for reprepo_dir in $repo_dir_list; do
+				for distro in $distro_list; do
+					result=$(reprepro -Vb "$reprepo_dir" -A amd64 listmatched "$distro" "*${aaa_dir#aaa-*}*")
+					if [[ $result != "" ]]; then
+						total="$result \n$total"
+					fi
+				done
+			done
+			echo -e "${aaa_dir#aaa-*} package exists somewhere sure you want to rebuild again ?"
+			echo -e "#########################################################################"
+			echo -e "$total"
+			if [[ $auto -ne 1 ]]; then 
+				echo -e "s to skip build any other key to rebuild\n"
+				read -s -n1 aaa_tmpchr
+				[[ $aaa_tmpchr == s ]] && continue
+			fi
+			[[ $test -ne 1 ]] && (aaa-build -clg $(ls -d))
+			[[ $test -eq 1 ]] && echo -e "would have built $repo_dir/$aaa_dir since status is $status"
+			wait
+			#error check routine
+			cd "$repo_dir/$aaa_dir"
+			[[ $test -ne 1 ]] && (aaa-build -clg -d kali $(ls -d))
+			[[ $test -eq 1 ]] && echo -e "would have built $repo_dir/$aaa_dir FOR KALI since status is $status"
+			wait
+		fi
+	done
+fi
+
+exit
+
+
+cd /root/git/github/aaa-archlinux-pacman
+(aaa-build -culg archlinux-pacman-4.1.2)
+wait
+(aaa-build -lg -d kali archlinux-pacman-4.1.2)
+wait
+
+cd /root/git/github/aaa-compiz
+(aaa-build -clgw compiz-0.9.10+13.10.20131011)
+wait
+(aaa-build -lg -d kali compiz-0.9.10+13.10.20131011)
+wait
+
+cd /root/git/github/aaa-cpyrit-cuda
+(aaa-build -clg cpyrit-cuda-0.4.0-git20131223)
+wait
+(aaa-build -lg -d kali cpyrit-cuda-0.4.0-git20131223)
+wait
+
+cd /root/git/github/aaa-emerald
+(aaa-build -clg emerald-0.9.5-0)
+wait
+(aaa-build -lg -d kali emerald-0.9.5-0)
+wait
+
+cd /root/git/github/aaa-fontconfig-infinality
+(aaa-build -clg fontconfig-infinality-1-2)
+wait
+(aaa-build -lg -d fontconfig-infinality-1-2)
+wait
+
+cd /root/git/github/aaa-freetype-infinality
+(aaa-build -clg freetype-infinality_2.4.9-3)
+wait
+(aaa-build -lg -d kali freetype-infinality_2.4.9-3)
+wait
+
+cd /root/git/github/aaa-galternatives
+(aaa-build -clg galternatives-0.13.5)
+wait
+(aaa-build -lg -d kali galternatives-0.13.5)
+wait
+
+cd /root/git/github/aaa-gdebi
+(aaa-build -clg gdebi-0.9.1)
+wait
+(aaa-build -lg -d kali gdebi-0.9.1)
+wait
+
+
+cd /root/git/github/aaa-pup-volume-monitor
+(aaa-build -clg pup-volume-monitor-0.1.15)
+wait
+(aaa-build -lg -d kali gdebi-0.9.1)
+wait
+
+
+cd /root/git/github/aaa-pyrit
+(aaa-build -clg pyrit-0.4.0-git20131223)
+wait
+(aaa-build -lg -d kali pyrit-0.4.0-git20131223)
+wait
+
+
+
+cd /root/git/github/aaa-timeshift
+(aaa-build -clg timeshift-1.2.7)
+wait
+(aaa-build -lg -d kali timeshift-1.2.7)
+wait
+
+
+cd /root/git/github/aaa-winexe
+(aaa-build -clg winexe-1.1~20130620kali4)
+wait
+(aaa-build -lg -d kali winexe-1.1~20130620kali4)
+wait
+
+
+cd /root/git/github/aaa-xarchiver
+(aaa-build -clg xarchiver-0.5.2+20130119+dfsg-3)
+wait
+(aaa-build -lg -d kali xarchiver-0.5.2+20130119+dfsg-3)
+wait
+

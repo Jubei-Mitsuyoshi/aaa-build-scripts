@@ -5,7 +5,7 @@
 
 Usage() {
   cat <<EOF
-usage: ${0##*/} [options] </path/to/pkg/dir>
+usage: ${0##*/} [options] </path/to/pkg/dir.../path/to/pkg/dir>
 
   -d < distro >
   -d <kali|stable|unstable|testing|ubuntu>
@@ -141,7 +141,7 @@ shift $((OPTIND-1))
 #and lets parse it
 
 [[ -z $1 ]] && Fuck "need directory target"
-[[ -d $1/debian ]] || Fuck "target dir does not contain a debian subdir"
+
 
 
 
@@ -157,67 +157,72 @@ shift $((OPTIND-1))
 	[[ $aaa_setup_build_env_complete == "yes" ]] || Fuck "this script needs the build environment setup, run aaa-setup-build-env"
 
 
-if [[ $quiet -eq 1 ]]; then
-
-	#setup working dirs
-	CleanMyBuildArea > /dev/null 2>&1 || exit 3
+for target in $@; do
+	[[ -d $target/debian ]] || Fuck "target dir does not contain a debian subdir"
 	
-	#update / create base immage
-	if [[ -e "$aaa_base_gz_dir/$aaa_base_gz" ]]; then
-		if [[ $update -eq 1 ]]; then
-			pbuilder --update > /dev/null 2>&1 || exit 3
+	if [[ $quiet -eq 1 ]]; then
+	
+		#setup working dirs
+		CleanMyBuildArea > /dev/null 2>&1 || exit 3
+		
+		#update / create base immage
+		if [[ -e "$aaa_base_gz_dir/$aaa_base_gz" ]]; then
+			if [[ $update -eq 1 ]]; then
+				pbuilder --update > /dev/null 2>&1 || exit 3
+			fi
+		else
+			if [[ $update -eq 1 ]]; then
+				pbuilder --create > /dev/null 2>&1 || exit 4
+			fi
 		fi
+	
+		
+		# build  source package
+		cp -R -p "$target" "$aaa_work_dir/$target" 2>&1 || exit 5
+		cp -R -p *.orig.tar.gz "$aaa_work_dir" 2>&1 || exit 6
+		cd "$aaa_work_dir/$target"
+		Stamp 2>&1 || exit 1
+		cd ..
+		
+		dpkg-source -b "$target" 2>&1 || exit 7
+		
+		pbuilder --build *.dsc 2>&1 || exit 8
+		
+		cd "$aaa_build_result" 2>&1 || exit 9
+		
+		AutoInclude 2>&1
+	
+		
+		list=$(ls *.deb)
+		for output in $list; do
+			echo ${output%.deb}
+		done
+	
 	else
-		if [[ $update -eq 1 ]]; then
-			pbuilder --create > /dev/null 2>&1 || exit 4
-		fi
+	
+		#setup working dirs
+		CleanMyBuildArea
+		
+		#update / create base immage
+		[[ $update -eq 1 ]] && UpdateBase
+		
+		
+		# build  source package
+		Test cp -R -p "$target" "$aaa_work_dir/$target"
+		Test cp -R -p *.orig.tar.gz "$aaa_work_dir"
+		cd "$aaa_work_dir/$target"
+		Stamp
+		cd ..
+		
+		Test dpkg-source -b "$target"
+		
+		Test pbuilder --build *.dsc
+		
+		cd "$aaa_build_result"
+		AutoInclude $clean
+	
+		
 	fi
-
 	
-	# build  source package
-	cp -R -p "$1" "$aaa_work_dir/$1" 2>&1 || exit 5
-	cp -R -p *.orig.tar.gz "$aaa_work_dir" 2>&1 || exit 6
-	cd "$aaa_work_dir/$1"
-	Stamp 2>&1 || exit 1
-	cd ..
-	
-	dpkg-source -b "$1" 2>&1 || exit 7
-	
-	pbuilder --build *.dsc 2>&1 || exit 8
-	
-	cd "$aaa_build_result" 2>&1 || exit 9
-	
-	AutoInclude 2>&1
-
-	
-	list=$(ls *.deb)
-	for output in $list; do
-		echo ${output%.deb}
-	done
-
-else
-
-	#setup working dirs
-	CleanMyBuildArea
-	
-	#update / create base immage
-	[[ $update -eq 1 ]] && UpdateBase
-	
-	
-	# build  source package
-	Test cp -R -p "$1" "$aaa_work_dir/$1"
-	Test cp -R -p *.orig.tar.gz "$aaa_work_dir"
-	cd "$aaa_work_dir/$1"
-	Stamp
-	cd ..
-	
-	Test dpkg-source -b "$1"
-	
-	Test pbuilder --build *.dsc
-	
-	cd "$aaa_build_result"
-	AutoInclude $clean
-
-	
-fi
+done
 

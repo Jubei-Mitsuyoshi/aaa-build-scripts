@@ -14,7 +14,11 @@ usage: ${0##*/} [options] </path/to/pkg/dir>
    -c < clone all gits from selected github page
     to the current dir >
     
+   -w < wipe work repo >
+    
    -s < read the status of all gits in the current dir >
+   
+   -g < read the status of all gits github repo dir >
     
    -t < test the build function >
    
@@ -42,7 +46,10 @@ while getopts ":lcbsta" opt; do
   case $opt in
 	a) auto=1 ;;
 	t) test=1 ;;
-	s) status=1 ;;
+	s) status=1 
+		git=0;;
+	g) status=1 
+		git=1;;
 	l) list=1 ;;
 	c) clone=1 ;;
 	b) build=1 ;;
@@ -84,7 +91,7 @@ fi
 
 
 if [[ $status -eq 1 ]]; then
-	cd "$repo_dir"
+	[[ git=1 ]] && cd "$repo_dir"
 	git_list=$(ls -d aaa*)
 	for aaa_dir in $git_list; do
 		cd "$repo_dir/$aaa_dir"

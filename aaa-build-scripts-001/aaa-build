@@ -210,9 +210,9 @@ for target in $@; do
 		# build  source package
 		Test cp -R -p "$target" "$aaa_work_dir/$target"
 		Test cp -R -p *.orig.tar.gz "$aaa_work_dir"
-		cd "$aaa_work_dir/$target"
-		Stamp
-		cd ..
+#		cd "$aaa_work_dir/$target"
+#		Stamp
+#		cd ..
 		
 		Test dpkg-source -b "$target"
 		

@@ -14,13 +14,17 @@ usage: ${0##*/} [options] </path/to/pkg/dir.../path/to/pkg/dir>
   names of files sucsessfully built and 
   processed>
   
-  -c <remove all aaa tag versions from
-  repo dirs before adding, used on first
-  build of package>
+  -t <tag version number with distro name
+  this is for building the same package version
+  but for different distros, not something one
+  normally does>
   
   -u <update/create pbuilder immage before
    build>
-  
+   
+   -c <just check the package for packaging
+   correcly ie dpkg-source -b implies no quiet>
+   
   ****repo flags*****
   -l < include built .changes to home repo,
 	basedir=aaa_home_repo_dir
@@ -95,20 +99,29 @@ if [ -r $HOME/.aaa_settings ]; then
   . $HOME/.aaa_settings
 fi
 
-#MUST BE BEFORE SWITCH DISTRO IS CALLED
-rm -rf $HOME/.pbuilderrc
-
 # get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
 
-while getopts ":d:cuqlgw" opt; do
+while getopts ":d:tuqlgwc" opt; do
   case $opt in
-    d) Info "< -d $OPTARG > passed" 
+        d) Info "< -d $OPTARG > passed" 
 		case $OPTARG in
 	kali|testing|unstable|stable|ubuntu) Info "-d $OPTARG is valid, building for $OPTARG"
-										SwitchDistro "$OPTARG" ;;
+											#check current distro, and only switch if necessary
+										if [[ -r "$HOME/.pbuilderrc" ]]; then
+											Info "found $HOME/.pbuilderrc from a previous run i hope !!!"
+											if [[ $(grep 'DISTRIBUTION=' "$HOME/.pbuilderrc" | sed 's/DISTRIBUTION=//') == "$OPTARG" ]]; then
+												Info "$HOME/.pbuilderrc already set for $OPTARG, no need to switch"
+											else
+												SwitchDistro "$OPTARG"
+											fi
+										else
+											SwitchDistro "$OPTARG"
+										fi 
+										distro_switched=1 ;;
 									  *) Fuck "<-d $OPTARG> is not valid, needs to be <-d kali,stable,unstable,testing or ubuntu>" ;;
 		esac ;;
-	c) clean="-c" ;;
+	t) clean="-s" 
+		tag=1;;
 	u) update=1 ;;
 	q) quiet=1 ;;
 	l) if [[ -z  "$aaa_home_repo_dir" ]]; then
@@ -132,6 +145,8 @@ while getopts ":d:cuqlgw" opt; do
 		else
 			add_to_work_repo=1
 		fi ;;
+	c) check=1 
+		quiet=0;;
    \?) Fuck "Invalid option: -$OPTARG" ;;
     :) Fuck "Option -$OPTARG requires a distro name, kali,stable,unstable,testing or ubuntu" ;;
   esac
@@ -142,13 +157,23 @@ shift $((OPTIND-1))
 
 [[ -z $1 ]] && Fuck "need directory target"
 
-
+[[ $distro_switched -ne 1 ]] && rm -f "$HOME/.pbuilderrc"
 
 
 
 ########## end of common header #############################################################################################################################################
 
 [[ "$(id -u)" != "0" ]] && Fuck "This script must be run as root"
+
+function Stamp()
+{
+	
+	local version=$(dpkg-parsechangelog --show-field Version)
+
+	 dch -v "$version-$aaa_pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "this change is an automated stamp of the package to show which distro it was built under , no changes are made except version number addition"
+ 
+	
+}
 	
 	
 	#check script dependencies
@@ -210,16 +235,29 @@ for target in $@; do
 		# build  source package
 		Test cp -R -p "$target" "$aaa_work_dir/$target"
 		Test cp -R -p *.orig.tar.gz "$aaa_work_dir"
-#		cd "$aaa_work_dir/$target"
-#		Stamp
-#		cd ..
+		cd "$aaa_work_dir"
+		if [[ $tag -eq 1 ]]; then
+			cd "$target"
+			Stamp
+			cd ..
+		fi
 		
-		Test dpkg-source -b "$target"
 		
-		Test pbuilder --build *.dsc
 		
-		cd "$aaa_build_result"
-		AutoInclude $clean
+		if [[ $check -ne 1 ]]; then
+			Test dpkg-source -b "$target"
+			Test pbuilder --build *.dsc
+		
+			cd "$aaa_build_result"
+			AutoInclude $clean
+		else
+			dpkg-source -b "$target"
+			if [[ $? -ne 0 ]]; then
+				Fuck "Failed to build package, error"
+			else
+				Info "$target bulilds from source correcly"
+			fi
+		fi
 	
 		
 	fi

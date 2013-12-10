@@ -14,11 +14,12 @@ usage: ${0##*/} [options] -d <distro>
   
   -p < purge ie delete work repo before build starts>
   
-  -c <remove all aaa tag versions from
-  repo dirs before adding, used on first
-  build of package>
+  -h < build everything from git >
   
-  -t < build everything from git >
+   -t <tag version number with distro name
+  this is for building the same package version
+  but for different distros, not something one
+  normally does>
   
   -i < install to local machine after build>
   
@@ -90,14 +91,10 @@ if [ -r $HOME/.aaa_settings ]; then
   . $HOME/.aaa_settings
 fi
 
-#remove previous run config if any, will be rewritten when aaa-master-config is sourced
-#if no command arguments /etc/pbuilderrc is used instead which is  fallback
-rm -rf $HOME/.pbuilderrc
-
 
 # get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
 
-while getopts ":d:pclgt" opt; do
+while getopts ":xd:iptlgh" opt; do
   case $opt in
 	x) Warn "about to install cinnamon and stuf, MAKE SURE YOUR NOT IN A CINNAMON SESSEION"
 		AnyKey
@@ -105,16 +102,27 @@ while getopts ":d:pclgt" opt; do
 		aptitude purge ~ncinnamon ~nmuffin ~ncjs ~nnemo
 		apt-get --no-upgrade --no-install-recommends install "cinnamon*" "muffin*" "cjs*" "nemo*" ;;
     d) Info "< -d $OPTARG > passed" 
-		case $OPTARG in
+			case $OPTARG in
 	kali|testing|unstable|stable|ubuntu) Info "-d $OPTARG is valid, building for $OPTARG"
-										SwitchDistro "$OPTARG" ;;
+											#check current distro, and only switch if necessary
+										if [[ -r "$HOME/.pbuilderrc" ]]; then
+											Info "found $HOME/.pbuilderrc from a previous run i hope !!!"
+											if [[ $(grep 'DISTRIBUTION=' "$HOME/.pbuilderrc" | sed 's/DISTRIBUTION=//') == "$OPTARG" ]]; then
+												Info "$HOME/.pbuilderrc already set for $OPTARG, no need to switch"
+											else
+												SwitchDistro "$OPTARG"
+											fi
+										else
+											SwitchDistro "$OPTARG"
+										fi ;;
 									  *) Fuck "<-d $OPTARG> is not valid, needs to be <-d kali,stable,unstable,testing or ubuntu>" ;;
-		esac ;;
+			esac ;;
 	i) install=1 ;;
 	p) WriteRepo "$aaa_work_repo_dir" "$aaa_work_codenames" "i386 amd64 armel armhf" -r
 		ActivateRepo "$aaa_work_repo_dir" "$aaa_work_codenames" "http://dk.archive.ubuntu.com/ubuntu/pool/main/u/ubuntu-keyring/ubuntu-keyring_2012.05.19_all.deb" ;;
-	c) clean="-c" ;;
-		l) if [[ -z  "$aaa_home_repo_dir" ]]; then
+	t) clean="-s" 
+		tag=1;;
+	l) if [[ -z  "$aaa_home_repo_dir" ]]; then
 			Warn "/etc/aaa-master-config has no reference for aaa_home_repo_dir"
 			Warn "if you continue your home repo will not be used "
 			AnyKey
@@ -128,7 +136,7 @@ while getopts ":d:pclgt" opt; do
 		else
 			add_to_git_repo=1
 		fi ;;
-	t) aaa_cinnamon_git_list="$aaa_cinnamon_release_list $aaa_cinnamon_git_list"
+	h) aaa_cinnamon_git_list="$aaa_cinnamon_release_list $aaa_cinnamon_git_list"
 	aaa_cinnamon_release_list="" ;;
    \?) Fuck "Invalid option: -$OPTARG" ;;
     :) Fuck "Option -$OPTARG requires a distro name, kali,stable,unstable,testing or ubuntu" ;;
@@ -205,15 +213,58 @@ function BuildOne()
 	
 	local version=$(dpkg-parsechangelog --show-field Version)
 	local pkg_name=$(dpkg-parsechangelog --show-field Source)
-	local tag=$aaa_pkg_tag
+	local pkg_tag
 	
-	[[ $git_build == yes ]] && tag="git$git_bdate""$aaa_pkg_tag"
-	case "$pkg_name" in
-		nemo) dch -v "$version$tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+	if [[ $git_build == yes ]]; then
+		if [[ tag -eq 1 ]]; then 
+			pkg_tag="+git$git_bdate""aaa""$aaa_pkg_tag"
+			case "$pkg_name" in
+				nemo) dch -v "$version$pkg_tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
 patch (remove_elevated_privelages_banner.patch) applied
-to remove annoying red banner when running under root" ;;
-			*) dch -v "$version$tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me" ;;
-	esac
+to remove annoying red banner when running under root
+version changed to tag this package as having been
+built from git at the tagged date and compiled
+under the package versions present in $aaa_debian_distro" ;;
+					*) dch -v "$version$pkg_tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+under a chroot of said distro
+version changed to tag this package as having been
+built from git at the tagged date and compiled
+under the package versions present in $aaa_debian_distro" ;;
+			esac
+		else
+			pkg_tag="+git$git_bdate""aaa"
+			case "$pkg_name" in
+				nemo) dch -v "$version$pkg_tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+patch (remove_elevated_privelages_banner.patch) applied
+to remove annoying red banner when running under root
+version changed to tag this package as having been
+built from git at the tagged date" ;;
+					*) dch -v "$version$pkg_tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+under a chroot of said distro
+version changed to tag this package as having been
+built from git at the tagged date" ;;
+			esac
+		fi
+	else
+		if [[ tag -eq 1 ]]; then 
+			pkg_tag=aaa"$aaa_pkg_tag"
+			case "$pkg_name" in
+				nemo) dch -v "$version$pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+patch (remove_elevated_privelages_banner.patch) applied
+to remove annoying red banner when running under root
+version changed to tag this package as having been compiled
+under the package versions present in $aaa_debian_distro" ;;
+					*) dch -v "$version$pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+under a chroot of said distro
+version changed to tag this package as having been compiled
+under the package versions present in $aaa_debian_distro" ;;
+			esac
+		else
+			pkg_tag=""
+			debchange --append --no-force-save-on-release --force-distribution --distribution "$aaa_debian_distro" "automated distribution change just affects repo management"
+		fi
+	fi
+	
 	
 	cd ..
 	

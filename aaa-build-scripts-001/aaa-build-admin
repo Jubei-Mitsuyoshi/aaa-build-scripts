@@ -42,7 +42,7 @@ fi
 
 # get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
 
-while getopts ":lcbsta" opt; do
+while getopts ":atsglcb" opt; do
   case $opt in
 	a) auto=1 ;;
 	t) test=1 ;;
@@ -98,6 +98,7 @@ if [[ $status -eq 1 ]]; then
 		if [[ ! -r "$repo_dir/$aaa_dir/README.md" ]]; then
 			echo -e "$repo_dir/$aaa_dir ------------->  no README.md"
 			echo -e "any key to continue"
+			read -n1 -s
 			continue
 		fi
 		status=$(grep 'STATUS:' "$repo_dir/$aaa_dir/README.md")
@@ -105,6 +106,7 @@ if [[ $status -eq 1 ]]; then
 		if [[ $status == "" ]]; then
 			echo -e "$repo_dir/$aaa_dir ------------->  status info missing"
 			echo -e "any key to continue"
+			read -n1 -s
 			continue
 		fi
 		# grep sed to check can be built from readme

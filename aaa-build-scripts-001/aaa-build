@@ -231,10 +231,8 @@ for target in $@; do
 		[[ wrepo -eq 1 ]] && AutoIncludeWork
 	
 		
-		list=$(ls *.deb)
-		for output in $list; do
-			echo ${output%.deb}
-		done
+		ls *.deb
+		
 	
 	else
 	

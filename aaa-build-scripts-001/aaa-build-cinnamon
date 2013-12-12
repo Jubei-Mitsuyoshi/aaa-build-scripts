@@ -14,12 +14,10 @@ usage: ${0##*/} [options] -d <distro>
   
   -p < purge ie delete work repo before build starts>
   
-  -h < build everything from git >
+  -G < build everything from git instead of release
+   sources which is the default >
   
-   -t <tag version number with distro name
-  this is for building the same package version
-  but for different distros, not something one
-  normally does>
+  -n < no update of pbuilder immage>
   
   -i < install to local machine after build>
   
@@ -28,26 +26,21 @@ usage: ${0##*/} [options] -d <distro>
 	superseeds all other options>
   
   ****repo flags*****
-  -l < include built .changes to home repo,
+  -l < include built .debs to local repo,
 	basedir=aaa_home_repo_dir
-	distro=aaa_debian_distro
+	only effective if repo dir set in
+	aaa-master-config>
 	
-  -g <also include packages into git repo>
+  -g <also include .changes into git repo>
 	basedir=aaa_git_repo_dir
-	distro=aaa_debian_distro
-  
-  aaa_debian_distro
-	sourced from /etc/aaa-master-config
-	<aaa_debian_distro> overwrtten by -d
-	< distro > >
+	only effective if repo dir set in
+	aaa-master-config>
    
   This script uses pbuilder and reprepro
   to build the package in the current dir
   result is found at the location
   specified in aaa-master-configure
   as aaa_build_result
-  
-
 EOF
 }
 
@@ -94,60 +87,75 @@ fi
 
 # get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
 
-while getopts ":xd:iptlgh" opt; do
+while getopts ":d:lgipGnx" opt; do
   case $opt in
-	x) Warn "about to install cinnamon and stuf, MAKE SURE YOUR NOT IN A CINNAMON SESSEION"
-		AnyKey
-		cd $HOME
-		aptitude purge ~ncinnamon ~nmuffin ~ncjs ~nnemo
-		apt-get --no-upgrade --no-install-recommends install "cinnamon*" "muffin*" "cjs*" "nemo*" ;;
-    d) Info "< -d $OPTARG > passed" 
-			case $OPTARG in
-	kali|testing|unstable|stable|ubuntu) Info "-d $OPTARG is valid, building for $OPTARG"
-											#check current distro, and only switch if necessary
-										if [[ -r "$HOME/.pbuilderrc" ]]; then
-											Info "found $HOME/.pbuilderrc from a previous run i hope !!!"
-											if [[ $(grep 'DISTRIBUTION=' "$HOME/.pbuilderrc" | sed 's/DISTRIBUTION=//') == "$OPTARG" ]]; then
-												Info "$HOME/.pbuilderrc already set for $OPTARG, no need to switch"
-											else
-												SwitchDistro "$OPTARG"
-											fi
-										else
-											SwitchDistro "$OPTARG"
-										fi ;;
-									  *) Fuck "<-d $OPTARG> is not valid, needs to be <-d kali,stable,unstable,testing or ubuntu>" ;;
-			esac ;;
-	i) install=1 ;;
-	p) WriteRepo "$aaa_work_repo_dir" "$aaa_work_codenames" "i386 amd64 armel armhf" -r
-		ActivateRepo "$aaa_work_repo_dir" "$aaa_work_codenames" "http://dk.archive.ubuntu.com/ubuntu/pool/main/u/ubuntu-keyring/ubuntu-keyring_2012.05.19_all.deb" ;;
-	t) clean="-s" 
-		tag=1;;
+   d) Info "< -d $OPTARG > passed" 
+		case $OPTARG in
+	kali|stable|testing) Info "-d $OPTARG is valid, building for $OPTARG"
+							new_distro="$OPTARG" ;;
+					*) Fuck "<-d $OPTARG> is not valid, needs to be <-d kali,stable,unstable,testing or ubuntu>" ;;
+		esac ;;
 	l) if [[ -z  "$aaa_home_repo_dir" ]]; then
 			Warn "/etc/aaa-master-config has no reference for aaa_home_repo_dir"
 			Warn "if you continue your home repo will not be used "
 			AnyKey
 		else
-			add_to_home_repo=1
+			hrepo=1
 		fi ;;
 	g) if [[ -z  "$aaa_git_repo_dir" ]]; then
 			Warn "/etc/aaa-master-config has no reference for aaa_git_repo_dir"
 			Warn "if you continue your home repo will not be used "
 			AnyKey
 		else
-			add_to_git_repo=1
+			grepo=1
 		fi ;;
-	h) aaa_cinnamon_git_list="$aaa_cinnamon_release_list $aaa_cinnamon_git_list"
-	aaa_cinnamon_release_list="" ;;
+	i) install=1 ;;
+	p) WriteRepo "$aaa_work_repo_codename" yes
+		ActivateWorkRepo ;;
+	G) aaa_cinnamon_git_list="$aaa_cinnamon_release_list $aaa_cinnamon_git_list"
+	aaa_cinnamon_release_list="" 
+	build_from_git=1 ;;
+	n) no_update=1 ;;
+	x) Warn "about to install cinnamon and stuf, MAKE SURE YOUR NOT IN A CINNAMON SESSEION"
+		AnyKey
+		cd $HOME
+		aptitude purge ~ncinnamon ~nmuffin ~ncjs ~nnemo
+		apt-get --no-upgrade --no-install-recommends install "cinnamon*" "muffin*" "cjs*" "nemo*" ;;
+	
    \?) Fuck "Invalid option: -$OPTARG" ;;
     :) Fuck "Option -$OPTARG requires a distro name, kali,stable,unstable,testing or ubuntu" ;;
   esac
 done
+
+
+if [[ $git_build -eq 1 ]]; then 
+	if [[ $new_distro ]]; then
+		SwitchDistro "$new_distro"
+		aaa_component="$aaa_debian_distro"git
+	else
+		aaa_component="$aaa_default_distro"git
+	fi
+else
+	if [[ $new_distro ]]; then
+		SwitchDistro "$new_distro"
+		aaa_component="$aaa_debian_distro"
+	else
+		aaa_component="$aaa_default_distro"
+		rm -f "$HOME/.pbuilderrc"
+	fi
+fi
+
+Debug "aaa_component=$aaa_component"
+
+
+
+
+
 #shift the options and args out the way http://wiki.bash-hackers.org/howto/getopts_tutorial
 shift $((OPTIND-1))
 
 
-#we are always adding to work repo, its more convenient
-add_to_work_repo=1
+
 
 ########## end of common header #############################################################################################################################################
 #check script dependencies
@@ -215,31 +223,31 @@ function BuildOne()
 	local pkg_name=$(dpkg-parsechangelog --show-field Source)
 	local pkg_tag
 	
-	if [[ $git_build == yes ]]; then
+	if [[ $git_build -eq 1 ]]; then
 		if [[ tag -eq 1 ]]; then 
 			pkg_tag="+git$git_bdate""aaa""$aaa_pkg_tag"
 			case "$pkg_name" in
-				nemo) dch -v "$version$pkg_tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+				nemo) dch -v "$version$pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
 patch (remove_elevated_privelages_banner.patch) applied
 to remove annoying red banner when running under root
 version changed to tag this package as having been
 built from git at the tagged date and compiled
 under the package versions present in $aaa_debian_distro" ;;
-					*) dch -v "$version$pkg_tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+					*) dch -v "$version$pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
 under a chroot of said distro
 version changed to tag this package as having been
 built from git at the tagged date and compiled
 under the package versions present in $aaa_debian_distro" ;;
 			esac
 		else
-			pkg_tag="+git$git_bdate""aaa"
+			pkg_tag="+git$git_bdate"aaa
 			case "$pkg_name" in
-				nemo) dch -v "$version$pkg_tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+				nemo) dch -v "$version$pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
 patch (remove_elevated_privelages_banner.patch) applied
 to remove annoying red banner when running under root
 version changed to tag this package as having been
 built from git at the tagged date" ;;
-					*) dch -v "$version$pkg_tag" --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
+					*) dch -v "$version$pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
 under a chroot of said distro
 version changed to tag this package as having been
 built from git at the tagged date" ;;
@@ -277,7 +285,9 @@ under the package versions present in $aaa_debian_distro" ;;
 	if [[ $? -eq 0 ]]; then
 		#add package to result repo and working repo
 		cd "$aaa_build_result"
-		AutoInclude $clean
+		[[ hrepo -eq 1 ]] && AutoIncludeHome
+		[[ grepo -eq 1 ]] && AutoIncludeGit
+		AutoIncludeWork
 	else
 		FailOkFilter "$pkg_name"
 	fi
@@ -325,109 +335,109 @@ CleanMyBuildArea
 [[ -z  "$aaa_work_repo_dir" ]] && Fuck "/etc/aaa-master-config has no reference for aaa_work_repo_dir"
 
 #update / create base immage
-UpdateBase
+[[ $no_update -ne 1 ]] && UpdateBase
 	
 
+if [[ $build_from_git -ne 1 ]]; then
+	#check for previous working copy
+	if [[ -d "$aaa_cinnamon_sources_release" ]]; then
+		Info "$aaa_cinnamon_sources_release already exists"
+		MenuActive "k" "to keep all sources"
+		MenuActive "s" "to to decide weather to keep individual sources"
+		MenuActive "q" "to quit with a return of 1"
+		MenuActive "any other key" "delete old directory"
+		read -s -n1 aaa_tmpchr
+		case "$aaa_tmpchr" in
+			q) exit 1 ;;
+			k) decide="keep" ;;
+			s) decide="choose" ;;
+			*) rm -fr "$aaa_cinnamon_sources_release"
+				MakeADir "$aaa_cinnamon_sources_release" ;;
+		esac
+	else
+		MakeADir "$aaa_cinnamon_sources_release" 
+	fi
 
-#check for previous working copy
-if [[ -d "$aaa_cinnamon_sources_release" ]]; then
-	 Info "$aaa_cinnamon_sources_release already exists"
-	MenuActive "k" "to keep all sources"
-	MenuActive "s" "to to decide weather to keep individual sources"
-	MenuActive "q" "to quit with a return of 1"
-	MenuActive "any other key" "delete old directory"
-	read -s -n1 aaa_tmpchr
-	case "$aaa_tmpchr" in
-		q) exit 1 ;;
-		k) decide="keep" ;;
-		s) decide="choose" ;;
-		*) rm -fr "$aaa_cinnamon_sources_release"
-			MakeADir "$aaa_cinnamon_sources_release" ;;
-	esac
+
+	for _package in $aaa_cinnamon_list; do
+		if [ -d "$aaa_cinnamon_sources_release/$_package"* ]; then
+			Info "$aaa_cinnamon_sources_release/$_package already exists"
+			case $decide in
+				keep) Info "keep all sources is on! keeping source $aaa_cinnamon_sources_release/$_package and building from it"
+						cd "$aaa_cinnamon_sources_release"
+						BuildIt "$_package" ;;
+			choose) Info "choose is on! you get a choice with each package its Christmas!"
+						MenuActive "k" "to keep these sources and build from them"
+						MenuActive "d" "to delete old directory and fetch fresh from git"
+						MenuActive "any other key" "to skip fetching and or building"
+						read -s -n1 aaa_tmpchr
+						case $aaa_tmpchr in
+							k) Info "keeping source $aaa_cinnamon_sources_release/$_package building from it"
+								cd "$aaa_cinnamon_sources_release"
+								BuildIt "$_package" ;;
+							d) rm -fr "$aaa_cinnamon_sources_release/$_package"*
+								cd "$aaa_cinnamon_sources_release"
+								GetRelease "$_package" && BuildIt "$_package" ;;
+							*) Info "skipping building $aaa_cinnamon_sources_release/$_package" ;;
+						esac ;;
+				*) Fuck "Internal error" ;;
+			esac
+		else
+			cd "$aaa_cinnamon_sources_release"
+			GetRelease "$_package" && BuildIt "$_package" 
+		fi
+	done
 else
-	MakeADir "$aaa_cinnamon_sources_release" 
-fi
-
-for _package in $aaa_cinnamon_release_list; do
-	if [ -d "$aaa_cinnamon_sources_release/$_package"* ]; then
-		Info "$aaa_cinnamon_sources_release/$_package already exists"
-		case $decide in
-			keep) Info "keep all sources is on! keeping source $aaa_cinnamon_sources_release/$_package and building from it"
-					cd "$aaa_cinnamon_sources_release"
+	#check for previous working copy
+	Block "Building chosen git sources"
+	if [[ -d "$aaa_cinnamon_sources_git" ]]; then
+		Info "$aaa_cinnamon_sources_git already exists"
+		MenuActive "k" "to keep all GIT sources"
+		MenuActive "s" "to to decide weather to keep individual GIT sources"
+		MenuActive "q" "to quit with a return of 1"
+		MenuActive "any other key" "delete old $aaa_cinnamon_sources_git directory"
+		read -s -n1 aaa_tmpchr
+		case "$aaa_tmpchr" in
+			q) exit 1 ;;
+			k) decide="keep" ;;
+			s) decide="choose" ;;
+			*) rm -fr "$aaa_cinnamon_sources_git"
+				MakeADir "$aaa_cinnamon_sources_git" ;;
+		esac
+	else
+		MakeADir "$aaa_cinnamon_sources_git" 
+	fi
+	
+	cd "$aaa_cinnamon_sources_git"
+	for _package in $aaa_cinnamon_list; do
+		if [ -d "$aaa_cinnamon_sources_git/$_package" ]; then
+			Info "$aaa_cinnamon_sources_git/$_package already exists"
+			case $decide in
+				keep) Info "keep all sources is on! keeping source $aaa_cinnamon_sources_git/$_package and building from it"
+					cd "$aaa_cinnamon_sources_git"
 					BuildIt "$_package" ;;
-		choose) Info "choose is on! you get a choice with each package its Christmas!"
-					MenuActive "k" "to keep these sources and build from them"
-					MenuActive "d" "to delete old directory and fetch fresh from git"
-					MenuActive "any other key" "to skip fetching and or building"
-					read -s -n1 aaa_tmpchr
-					case $aaa_tmpchr in
-						k) Info "keeping source $aaa_cinnamon_sources_release/$_package building from it"
-							cd "$aaa_cinnamon_sources_release"
-							BuildIt "$_package" ;;
-						d) rm -fr "$aaa_cinnamon_sources_release/$_package"*
-							cd "$aaa_cinnamon_sources_release"
-							GetRelease "$_package" && BuildIt "$_package" ;;
-						*) Info "skipping building $aaa_cinnamon_sources_release/$_package" ;;
-					esac ;;
-			*) Fuck "Internal error" ;;
-		esac
-	else
-		cd "$aaa_cinnamon_sources_release"
-		GetRelease "$_package" && BuildIt "$_package" 
-	fi
-done
-
-#check for previous working copy
-Block "Building chosen git sources"
-if [[ -d "$aaa_cinnamon_sources_git" ]]; then
-	 Info "$aaa_cinnamon_sources_git already exists"
-	MenuActive "k" "to keep all GIT sources"
-	MenuActive "s" "to to decide weather to keep individual GIT sources"
-	MenuActive "q" "to quit with a return of 1"
-	MenuActive "any other key" "delete old $aaa_cinnamon_sources_git directory"
-	read -s -n1 aaa_tmpchr
-	case "$aaa_tmpchr" in
-		q) exit 1 ;;
-		k) decide="keep" ;;
-		s) decide="choose" ;;
-		*) rm -fr "$aaa_cinnamon_sources_git"
-			MakeADir "$aaa_cinnamon_sources_git" ;;
-	esac
-else
-	MakeADir "$aaa_cinnamon_sources_git" 
+			choose) Info "choose is on! you get a choice with each package its Christmas!"
+						MenuActive "k" "to keep these sources and build from them"
+						MenuActive "d" "to delete old directory and fetch fresh from git"
+						MenuActive "any other key" "to skip fetching and building"
+						read -s -n1 aaa_tmpchr
+						case $aaa_tmpchr in
+							k) Info "keeping source $aaa_cinnamon_sources_git/$_package and building from it"
+								cd "$aaa_cinnamon_sources_git"
+								BuildIt "$_package" ;;
+							d) rm -fr "$aaa_cinnamon_sources_git/$_package"
+								cd "$aaa_cinnamon_sources_git"
+								CloneIt "$_package" "$aaa_mint_git_url" && BuildIt "$_package" ;;
+							*) Info "skipping building $aaa_cinnamon_sources_git/$_package" ;;
+						esac ;;
+				*) Fuck "Internal error" ;;
+			esac
+		else
+			cd "$aaa_cinnamon_sources_git"
+			CloneIt "$_package" "$aaa_mint_git_url" && BuildIt "$_package"
+		fi
+	done
 fi
-
-git_build=yes
-cd "$aaa_cinnamon_sources_git"
-for _package in $aaa_cinnamon_git_list; do
-	if [ -d "$aaa_cinnamon_sources_git/$_package" ]; then
-		Info "$aaa_cinnamon_sources_git/$_package already exists"
-		case $decide in
-			keep) Info "keep all sources is on! keeping source $aaa_cinnamon_sources_git/$_package and building from it"
-				cd "$aaa_cinnamon_sources_git"
-				BuildIt "$_package" ;;
-		  choose) Info "choose is on! you get a choice with each package its Christmas!"
-					MenuActive "k" "to keep these sources and build from them"
-					MenuActive "d" "to delete old directory and fetch fresh from git"
-					MenuActive "any other key" "to skip fetching and building"
-					read -s -n1 aaa_tmpchr
-					case $aaa_tmpchr in
-						k) Info "keeping source $aaa_cinnamon_sources_git/$_package and building from it"
-							cd "$aaa_cinnamon_sources_git"
-							BuildIt "$_package" ;;
-						d) rm -fr "$aaa_cinnamon_sources_git/$_package"
-							cd "$aaa_cinnamon_sources_git"
-							CloneIt "$_package" "$aaa_mint_git_url" && BuildIt "$_package" ;;
-						*) Info "skipping building $aaa_cinnamon_sources_git/$_package" ;;
-					esac ;;
-			  *) Fuck "Internal error" ;;
-		esac
-	else
-		cd "$aaa_cinnamon_sources_git"
-		CloneIt "$_package" "$aaa_mint_git_url" && BuildIt "$_package"
-	fi
-done
-
 
 if [[ $install -eq 1 ]]; then
 Warn "about to install cinnamon and stuf, MAKE SURE YOUR NOT IN A CINNAMON SESSEION"

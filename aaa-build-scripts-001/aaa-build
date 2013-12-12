@@ -8,16 +8,13 @@ Usage() {
 usage: ${0##*/} [options] </path/to/pkg/dir.../path/to/pkg/dir>
 
   -d < distro >
-  -d <kali|stable|unstable|testing|ubuntu>
+  -d <backport build to selected distro
+	kali|stable|testing
+	default build is unstable>
   
   -q <supress normal output, just print
   names of files sucsessfully built and 
   processed>
-  
-  -t <tag version number with distro name
-  this is for building the same package version
-  but for different distros, not something one
-  normally does>
   
   -u <update/create pbuilder immage before
    build>
@@ -25,29 +22,24 @@ usage: ${0##*/} [options] </path/to/pkg/dir.../path/to/pkg/dir>
    -c <just check the package for packaging
    correcly ie dpkg-source -b implies no quiet>
    
+   -G <git build ie include to git component>
+   
   ****repo flags*****
-  -l < include built .changes to home repo,
+  -l < include built .debs to local repo,
 	basedir=aaa_home_repo_dir
-	distro=aaa_debian_distro
 	only effective if repo dir set in
-	aaa-master-config
+	aaa-master-config>
 	
-  -g <also include packages into git repo>
+  -g <also include .changes into git repo>
 	basedir=aaa_git_repo_dir
-	distro=aaa_debian_distro
 	only effective if repo dir set in
-	aaa-master-config
+	aaa-master-config>
   
-  -w <also include packages into work repo>
+  -w <also include built .debs into work repo>
 	basedir=aaa_work_repo_dir
 	distro=work
 	only effective if repo dir set in
-	aaa-master-config
-  
-  aaa_debian_distro
-	sourced from /etc/aaa-master-config
-	<aaa_debian_distro> overwrtten by -d
-	< distro > >
+	aaa-master-config>
    
   This script uses pbuilder and reprepro
   to build the package in the current dir
@@ -99,65 +91,78 @@ if [ -r $HOME/.aaa_settings ]; then
   . $HOME/.aaa_settings
 fi
 
+####
+aaa_component="main"
+
 # get options and arguments http://wiki.bash-hackers.org/howto/getopts_tutorial
 
-while getopts ":d:tuqlgwc" opt; do
+while getopts ":d:lgwuqcG" opt; do
   case $opt in
         d) Info "< -d $OPTARG > passed" 
 		case $OPTARG in
-	kali|testing|unstable|stable|ubuntu) Info "-d $OPTARG is valid, building for $OPTARG"
-											#check current distro, and only switch if necessary
-										if [[ -r "$HOME/.pbuilderrc" ]]; then
-											Info "found $HOME/.pbuilderrc from a previous run i hope !!!"
-											if [[ $(grep 'DISTRIBUTION=' "$HOME/.pbuilderrc" | sed 's/DISTRIBUTION=//') == "$OPTARG" ]]; then
-												Info "$HOME/.pbuilderrc already set for $OPTARG, no need to switch"
-											else
-												SwitchDistro "$OPTARG"
-											fi
-										else
-											SwitchDistro "$OPTARG"
-										fi 
-										distro_switched=1 ;;
-									  *) Fuck "<-d $OPTARG> is not valid, needs to be <-d kali,stable,unstable,testing or ubuntu>" ;;
+	kali|stable|testing) Info "-d $OPTARG is valid, building for $OPTARG"
+							new_distro="$OPTARG" ;;
+					*) Fuck "<-d $OPTARG> is not valid, needs to be <-d kali,stable,unstable,testing or ubuntu>" ;;
 		esac ;;
-	t) clean="-s" 
-		tag=1;;
-	u) update=1 ;;
-	q) quiet=1 ;;
 	l) if [[ -z  "$aaa_home_repo_dir" ]]; then
 			Warn "/etc/aaa-master-config has no reference for aaa_home_repo_dir"
 			Warn "if you continue your home repo will not be used "
 			AnyKey
 		else
-			add_to_home_repo=1
+			hrepo=1
 		fi ;;
 	g) if [[ -z  "$aaa_git_repo_dir" ]]; then
 			Warn "/etc/aaa-master-config has no reference for aaa_git_repo_dir"
 			Warn "if you continue your home repo will not be used "
 			AnyKey
 		else
-			add_to_git_repo=1
+			grepo=1
 		fi ;;
 	w) if [[ -z  "$aaa_work_repo_dir" ]]; then
 			Warn "/etc/aaa-master-config has no reference for aaa_work_repo_dir"
 			Warn "if you continue your work repo will not be used "
 			AnyKey
 		else
-			add_to_work_repo=1
+			wrepo=1
 		fi ;;
+	u) update=1 ;;
+	q) quiet=1 ;;
 	c) check=1 
 		quiet=0;;
+	G) git_build=1 ;;
    \?) Fuck "Invalid option: -$OPTARG" ;;
     :) Fuck "Option -$OPTARG requires a distro name, kali,stable,unstable,testing or ubuntu" ;;
   esac
 done
+
+#sort vars
+
+
+if [[ $git_build -eq 1 ]]; then 
+	if [[ $new_distro ]]; then
+		SwitchDistro "$new_distro"
+		aaa_component="$aaa_debian_distro"git
+	else
+		aaa_component="$aaa_default_distro"git
+	fi
+else
+	if [[ $new_distro ]]; then
+		SwitchDistro "$new_distro"
+		aaa_component="$aaa_debian_distro"
+	else
+		aaa_component="$aaa_default_distro"
+		rm -f "$HOME/.pbuilderrc"
+	fi
+fi
+
+Debug "aaa_component=$aaa_component"
+		
 #shift the options and args out the way http://wiki.bash-hackers.org/howto/getopts_tutorial
 shift $((OPTIND-1))
 #and lets parse it
 
 [[ -z $1 ]] && Fuck "need directory target"
 
-[[ $distro_switched -ne 1 ]] && rm -f "$HOME/.pbuilderrc"
 
 
 
@@ -170,7 +175,10 @@ function Stamp()
 	
 	local version=$(dpkg-parsechangelog --show-field Version)
 
-	 dch -v "$version-$aaa_pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "this change is an automated stamp of the package to show which distro it was built under , no changes are made except version number addition"
+	 dch -v "$version$aaa_debian_distro" --force-distribution --distribution "$aaa_debian_distro" "this change is an automated stamp \
+of the package to show which distro it was built under , \
+no changes are made except version number addition \
+which has the host distro tagged to the end"
  
 	
 }
@@ -179,7 +187,7 @@ function Stamp()
 	#check script dependencies
 	CheckMyDeps "reprepro pbuilder dpkg-source dpkg-parsechangelog"
 	[[ $aaa_setup_build_base_complete == yes ]] || Fuck "this script needs the base build environment setup, run aaa_setup-build-base"
-	[[ $aaa_setup_build_env_complete == "yes" ]] || Fuck "this script needs the build environment setup, run aaa-setup-build-env"
+	[[ $aaa_setup_build_env_complete == yes ]] || Fuck "this script needs the build environment setup, run aaa-setup-build-env"
 
 
 for target in $@; do
@@ -203,11 +211,14 @@ for target in $@; do
 	
 		
 		# build  source package
-		cp -R -p "$target" "$aaa_work_dir/$target" 2>&1 || exit 5
-		cp -R -p *.orig.tar.gz "$aaa_work_dir" 2>&1 || exit 6
-		cd "$aaa_work_dir/$target"
-		Stamp 2>&1 || exit 1
-		cd ..
+		cp -R -p "$target" "$aaa_work_dir/$target" > /dev/null 2>&1 || exit 4
+		cp -R -p *.orig.tar.gz "$aaa_work_dir" > /dev/null 2>&1 || exit 4
+		cd "$aaa_work_dir"
+		if [[ $new_distro ]]; then
+			cd "$target"
+			Stamp
+			cd ..
+		fi
 		
 		dpkg-source -b "$target" 2>&1 || exit 7
 		
@@ -215,7 +226,9 @@ for target in $@; do
 		
 		cd "$aaa_build_result" 2>&1 || exit 9
 		
-		AutoInclude 2>&1
+		[[ hrepo -eq 1 ]] && AutoIncludeHome
+		[[ grepo -eq 1 ]] && AutoIncludeGit
+		[[ wrepo -eq 1 ]] && AutoIncludeWork
 	
 		
 		list=$(ls *.deb)
@@ -236,7 +249,7 @@ for target in $@; do
 		Test cp -R -p "$target" "$aaa_work_dir/$target"
 		Test cp -R -p *.orig.tar.gz "$aaa_work_dir"
 		cd "$aaa_work_dir"
-		if [[ $tag -eq 1 ]]; then
+		if [[ $new_distro ]]; then
 			cd "$target"
 			Stamp
 			cd ..
@@ -249,7 +262,9 @@ for target in $@; do
 			Test pbuilder --build *.dsc
 		
 			cd "$aaa_build_result"
-			AutoInclude $clean
+			[[ hrepo -eq 1 ]] && AutoIncludeHome
+			[[ grepo -eq 1 ]] && AutoIncludeGit
+			[[ wrepo -eq 1 ]] && AutoIncludeWork
 		else
 			dpkg-source -b "$target"
 			if [[ $? -ne 0 ]]; then

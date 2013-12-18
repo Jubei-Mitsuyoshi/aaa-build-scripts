@@ -128,7 +128,7 @@ while getopts ":d:lgipGnx" opt; do
 done
 
 
-if [[ $git_build -eq 1 ]]; then 
+if [[ $build_from_git -eq 1 ]]; then 
 	if [[ $new_distro ]]; then
 		SwitchDistro "$new_distro"
 		aaa_component="$aaa_debian_distro"git
@@ -223,9 +223,10 @@ function BuildOne()
 	local pkg_name=$(dpkg-parsechangelog --show-field Source)
 	local pkg_tag
 	
-	if [[ $git_build -eq 1 ]]; then
-		if [[ tag -eq 1 ]]; then 
+	if [[ $build_from_git -eq 1 ]]; then
+		if [[ "$aaa_debian_distro" != "$aaa_default_distro" ]]; then 
 			pkg_tag="+git$git_bdate""aaa""$aaa_pkg_tag"
+			Debug "pkg_tag=$pkg_tag"
 			case "$pkg_name" in
 				nemo) dch -v "$version$pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
 patch (remove_elevated_privelages_banner.patch) applied
@@ -241,6 +242,7 @@ under the package versions present in $aaa_debian_distro" ;;
 			esac
 		else
 			pkg_tag="+git$git_bdate"aaa
+			Debug "pkg_tag=$pkg_tag"
 			case "$pkg_name" in
 				nemo) dch -v "$version$pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
 patch (remove_elevated_privelages_banner.patch) applied
@@ -254,8 +256,9 @@ built from git at the tagged date" ;;
 			esac
 		fi
 	else
-		if [[ tag -eq 1 ]]; then 
+		if [[ "$aaa_debian_distro" != "$aaa_default_distro" ]]; then 
 			pkg_tag=aaa"$aaa_pkg_tag"
+			Debug "pkg_tag=$pkg_tag"
 			case "$pkg_name" in
 				nemo) dch -v "$version$pkg_tag" --force-distribution --distribution "$aaa_debian_distro" "compiled for $aaa_debian_distro by me
 patch (remove_elevated_privelages_banner.patch) applied
@@ -269,6 +272,7 @@ under the package versions present in $aaa_debian_distro" ;;
 			esac
 		else
 			pkg_tag=""
+			Debug "pkg_tag=$pkg_tag"
 			debchange --append --no-force-save-on-release --force-distribution --distribution "$aaa_debian_distro" "automated distribution change just affects repo management"
 		fi
 	fi

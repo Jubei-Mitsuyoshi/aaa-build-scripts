@@ -214,7 +214,7 @@ for target in $@; do
 		cp -R -p "$target" "$aaa_work_dir/$target" > /dev/null 2>&1 || exit 4
 		cp -R -p *.orig.tar.gz "$aaa_work_dir" > /dev/null 2>&1 || exit 4
 		cd "$aaa_work_dir"
-		if [[ $new_distro ]]; then
+		if [[ "$aaa_debian_distro" != "$aaa_default_distro" ]]; then 
 			cd "$target"
 			Stamp
 			cd ..
@@ -247,7 +247,7 @@ for target in $@; do
 		Test cp -R -p "$target" "$aaa_work_dir/$target"
 		Test cp -R -p *.orig.tar.gz "$aaa_work_dir"
 		cd "$aaa_work_dir"
-		if [[ $new_distro ]]; then
+		if [[ "$aaa_debian_distro" != "$aaa_default_distro" ]]; then 
 			cd "$target"
 			Stamp
 			cd ..
